@@ -248,6 +248,19 @@ details.sec[open]>summary::before{content:"\2212"}
 .tctl .btn{padding:9px 16px;font-size:14px}
 .chip-run{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:14px;background:var(--g-s);color:var(--g);cursor:pointer;border:0}
 .chip-run.pz{background:var(--y-s);color:var(--y)}
+.day-countdown{
+  display:inline-flex;
+  align-items:center;
+  padding:4px 10px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--raised);
+  color:var(--ink2);
+  font-size:12.5px;
+  font-weight:600;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
 
 
 /* ---------- full-screen focus timer ---------- */
@@ -360,6 +373,9 @@ code{font-size:12px;background:var(--sunk);padding:0 4px;border-radius:3px}
     <header class="top">
       <h1 id="title">Dashboard</h1>
       <div class="top-r">
+        <!-- <span id="timerChip"></span>
+        <span id="localStatusChip" class="hint"></span> -->
+        <span id="dayCountdownChip" class="day-countdown"></span>
         <span id="timerChip"></span>
         <span id="localStatusChip" class="hint"></span>
         <button class="btn ghost" data-act="search" aria-label="Search everything">Search<kbd class="kb">Ctrl K</kbd></button>
@@ -623,7 +639,51 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DOWL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const ds = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const pd = s => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1, 12); };
-const today = () => ds(new Date());
+//const today = () => ds(new Date());
+const STUDY_DAY_START_HOUR = 4; // 4:00 AM
+
+function getStudyDayEnd() {
+  const now = new Date();
+  const end = new Date(now);
+
+  end.setHours(STUDY_DAY_START_HOUR, 0, 0, 0);
+
+  // If today's 4 AM has already passed,
+  // the current study day ends tomorrow at 4 AM.
+  if (now >= end) {
+    end.setDate(end.getDate() + 1);
+  }
+
+  return end;
+}
+
+function updateDayCountdown() {
+  const el = $('#dayCountdownChip');
+  if (!el) return;
+
+  const now = new Date();
+  const end = getStudyDayEnd();
+  let diff = Math.max(0, end - now);
+
+  const totalSec = Math.floor(diff / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+
+  el.textContent =
+    `Study day ends in ${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+const today = () => {
+  const d = new Date();
+
+  // Before 4:00 AM belongs to the previous study day
+  if (d.getHours() < STUDY_DAY_START_HOUR) {
+    d.setDate(d.getDate() - 1);
+  }
+
+  return ds(d);
+};
 const addD = (s, n) => { const d = pd(s); d.setDate(d.getDate() + n); return ds(d); };
 const diffD = (a, b) => Math.round((pd(b) - pd(a)) / 864e5);
 const dow = s => pd(s).getDay();
@@ -3008,10 +3068,26 @@ document.addEventListener('change', e => {
   r.readAsText(e.target.files[0]); e.target.value = '';
 });
 let lastDay = null;
+// function tick() {
+//   if (S.timer.state === 'running') { $$('[data-clock]').forEach(x => x.textContent = fmtClock(timerMs())); paintFocus(); }
+//   const t = today(); if (t !== lastDay) { const first = lastDay === null; lastDay = t; if (!first) render(); }
+// }
 function tick() {
-  if (S.timer.state === 'running') { $$('[data-clock]').forEach(x => x.textContent = fmtClock(timerMs())); paintFocus(); }
-  const t = today(); if (t !== lastDay) { const first = lastDay === null; lastDay = t; if (!first) render(); }
+  updateDayCountdown();
+
+  if (S.timer.state === 'running') {
+    $$('[data-clock]').forEach(x => x.textContent = fmtClock(timerMs()));
+    paintFocus();
+  }
+
+  const t = today();
+  if (t !== lastDay) {
+    const first = lastDay === null;
+    lastDay = t;
+    if (!first) render();
+  }
 }
+
 async function init() {
   load(); applyTheme();
   const h = (location.hash || '').slice(1); if (VIEWS[h]) UI.view = h;
