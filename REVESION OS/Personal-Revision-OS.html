@@ -139,6 +139,7 @@ main{padding:22px 16px 140px}.hero h1{font-size:32px}.lede{font-size:18px}.cell{
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=p=>p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const day=(d=new Date())=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
+const studyDay=(d=new Date())=>{const x=new Date(d);if(x.getHours()<4)x.setDate(x.getDate()-1);return day(x)};
 const addDays=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return day(d)};
 const diff=(a,b)=>Math.round((new Date(a+'T00:00:00')-new Date(b+'T00:00:00'))/864e5);
 const fmt=d=>d?new Date(d+'T00:00:00').toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'—';
@@ -165,9 +166,9 @@ const MS=['1-day check','3-day check','7-day check','14-day check','30-day check
 const CUM=POLICY.steps.reduce((a,v)=>[...a,(a[a.length-1]||0)+v],[]);
 const mastered=i=>(i.ms??i.step)>=POLICY.steps.length&&i.step>=POLICY.steps.length-1&&!i.cw;
 // future revision dates assuming each is recalled confidently (rating 3)
-function chain(it,n,until){const S=POLICY.steps,t=day(),out=[];let d=it.due<t?t:it.due,k=it.step,mt=mastered(it);out.push({date:d,k,mt,sched:true,late:it.due<t});
+function chain(it,n,until){const S=POLICY.steps,t=studyDay(),out=[];let d=it.due<t?t:it.due,k=it.step,mt=mastered(it);out.push({date:d,k,mt,sched:true,late:it.due<t});
 while(out.length<n){if(k==S.length-1)mt=true;k=Math.min(k+1,S.length-1);d=addDays(d,S[k]);if(until&&d>until)break;out.push({date:d,k,mt})}return out}
-function track(it,s,hist){const S=POLICY.steps,t=day(),m=mastered(it),c=chain(it,S.length-it.step),okh=hist.filter(h=>h.ok&&h.sb!=null).sort((a,b)=>b.date.localeCompare(a.date));
+function track(it,s,hist){const S=POLICY.steps,t=studyDay(),m=mastered(it),c=chain(it,S.length-it.step),okh=hist.filter(h=>h.ok&&h.sb!=null).sort((a,b)=>b.date.localeCompare(a.date));
 const nodes=S.map((v,k)=>{const plan=addDays(s.date,CUM[k]);if(m||k<it.step){const h=okh.find(h=>h.sb===k);return{k,st:'done',date:h?.date,plan}}
 const p=c[k-it.step];return{k,plan,st:k>it.step?'todo':p.late?'late':p.date==t?'now':'next',date:k==it.step?it.due:p.date}});
 const end=m?(okh.find(h=>h.sb===S.length-1)?.date):nodes[S.length-1].date,planEnd=addDays(s.date,CUM[S.length-1]);
@@ -178,7 +179,7 @@ const planTag=r=>r.m?'<span class="chip ok">Mastered</span>':r.lag==null?'':r.la
 async function roadData(){const[ss,items,rh]=await Promise.all([all('sessions'),all('revision'),all('revhist')]),sm=new Map(ss.map(s=>[s.id,s])),hb={};rh.forEach(h=>(hb[h.sid]=hb[h.sid]||[]).push(h));
 return{rows:items.filter(i=>sm.has(i.sid)).map(i=>{const s=sm.get(i.sid);return{i,s,r:track(i,s,hb[i.sid]||[])}}),sm,hb}}
 const prio=i=>Math.max(0,i.od)*2+i.fails*3+i.cw*2+(4-(i.lastConf??2));
-async function dueData(){const items=await all('revision'),ss=new Map((await all('sessions')).map(s=>[s.id,s])),t=day(),lim=await setting('dailyLimit',20),rm=await setting('revMin',10);
+async function dueData(){const items=await all('revision'),ss=new Map((await all('sessions')).map(s=>[s.id,s])),t=studyDay(),lim=await setting('dailyLimit',20),rm=await setting('revMin',10);
 const due=items.filter(i=>i.due<=t&&ss.has(i.sid)).map(i=>({...i,s:ss.get(i.sid),od:diff(t,i.due)}));due.forEach(i=>i.pri=prio(i));due.sort((a,b)=>b.pri-a.pri);return{items,ss,due,queue:due.slice(0,lim),lim,rm,t}}
 /* Router */
 const A={},V={};let S={rev:null,cal:null};
@@ -197,7 +198,7 @@ return`<header class="hero"><div class="sub">${new Date().toLocaleDateString(und
 ${f?`<h2>First in the queue</h2><div class="box"><div class="row" style="justify-content:space-between"><div><div style="font-size:16px">${label(f.s)}</div><div class="sub" style="margin:4px 0 0">Learned ${fmt(f.s.date)}${f.od>0?`, <span class="bad">overdue by ${f.od} day${f.od>1?'s':''}</span>`:''}${f.fails?`, forgotten ${f.fails} time${f.fails>1?'s':''}`:''}</div></div><button class="p" onclick="A.startRev()">Start revision (${q})</button></div>${d.due.length>q?`<p class="sub" style="margin:10px 0 0">${d.due.length-q} more are waiting beyond your daily limit of ${d.lim}.</p>`:''}</div>`:''}
 ${await dashRoad()}
 <h2>Weak area</h2><div class="box">${w?`${esc(w[0])} <span class="chip bad">${w[1]} session${w[1]>1?'s':''} weak</span>`:'<span class="sub" style="margin:0">No weak topics yet. Topics show up here after you forget them in a recall check.</span>'}</div>`};
-async function dashRoad(){const{rows}=await roadData();if(!rows.length)return'';const t=day(),e=addDays(t,6),ld={};
+async function dashRoad(){const{rows}=await roadData();if(!rows.length)return'';const t=studyDay(),e=addDays(t,6),ld={};
 rows.forEach(x=>chain(x.i,99,e).forEach(c=>{if(c.date<=e)ld[c.date]=(ld[c.date]||0)+1}));const mx=Math.max(1,...Object.values(ld)),ms=rows.filter(x=>x.r.m).length,bh=rows.filter(x=>x.r.lag>0).length;
 return`<h2>Roadmap</h2><div class="box"><div class="row" style="justify-content:space-between"><span><b>${ms}</b> of ${rows.length} sessions mastered${bh?` · <span class="bad">${bh} behind plan</span>`:''}</span><button onclick="go('roadmap')">Open roadmap</button></div>
 <div class="fcg" style="margin-top:10px">${[...Array(7)].map((_,k)=>{const d=addDays(t,k),n=ld[d]||0;return`<div class="fc ${k?'':'td'}" onclick="S.rm=Object.assign(S.rm||{},{sel:'${d}'});go('roadmap')">${k?new Date(d+'T00:00:00').toLocaleDateString(undefined,{weekday:'short'}):'Today'}<span class="mn">${n}</span><div class="bar"><div style="width:${100*n/mx}%"></div></div></div>`}).join('')}</div></div>`}
@@ -232,11 +233,11 @@ document.addEventListener('fullscreenchange',()=>{if(TM)drawTimer()});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible'&&TM&&TM.running&&FOCUS)reqWL()});
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='s'){e.preventDefault();A.saveFile(true);return}
 if(!TM||!FOCUS)return;if(e.code=='Space'){e.preventDefault();A.tpause()}else if(e.key=='Escape')A.fmin()});
-A.tstart=async e=>{e.preventDefault();document.documentElement.requestFullscreen?.().catch(()=>{});const f=Object.fromEntries(new FormData(e.target));TM={id:'timer',...f,date:day(),acc:0,start:Date.now(),t0:Date.now(),running:true};await put('settings',TM);A.close();FOCUS=true;drawTimer();return false};
+A.tstart=async e=>{e.preventDefault();document.documentElement.requestFullscreen?.().catch(()=>{});const f=Object.fromEntries(new FormData(e.target));TM={id:'timer',...f,date:studyDay(),acc:0,start:Date.now(),t0:Date.now(),running:true};await put('settings',TM);A.close();FOCUS=true;drawTimer();return false};
 A.tpause=async()=>{if(TM.running){TM.acc+=Date.now()-TM.start;TM.running=false}else{TM.start=Date.now();TM.running=true}await put('settings',TM);drawTimer()};
 A.tstop=async()=>{const ms=elapsed(),min=Math.max(1,Math.round(ms/60000)),sid=uid('s'),n=(await all('sessions')).length;
 await put('sessions',{id:sid,no:n+1,date:TM.date,subject:TM.subject,topic:TM.topic,subtopic:TM.subtopic,duration:min,createdAt:new Date().toISOString()});await put('revision',newItem(sid,TM.date));
-await del('settings','timer');TM=null;FOCUS=false;drawTimer();toast('Session saved ('+hm(min)+'). First recall check '+fmt(addDays(day(),1)));go(S.view)};
+await del('settings','timer');TM=null;FOCUS=false;drawTimer();toast('Session saved ('+hm(min)+'). First recall check '+fmt(addDays(studyDay(),1)));go(S.view)};
 A.tdiscard=async()=>{if(!confirm('Discard this timer without saving a session?'))return;await del('settings','timer');TM=null;FOCUS=false;drawTimer()};
 A.editSession=async id=>{const s=await get('sessions',id);$('#mb').innerHTML=`<h3>Edit session</h3><form onsubmit="return A.saveSession(event,'${id}')"><label>Date<input name="date" type="date" value="${s.date}" required></label><label>Subject *<input name="subject" value="${esc(s.subject)}" required></label><label>Topic *<input name="topic" value="${esc(s.topic)}" required></label><label>Subtopic<input name="subtopic" value="${esc(s.subtopic)}"></label><p class="sub">Studied time (${hm(s.duration)}) comes from the timer and isn't editable.</p><div class="row"><button class="p">Save</button><button type="button" onclick="A.close()">Cancel</button></div></form>`;$('#modal').classList.add('on')};
 A.saveSession=async(e,id)=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target)),s=await get('sessions',id);Object.assign(s,f);await put('sessions',s);const it=await get('revision',id);if(it&&!it.attempts){it.due=addDays(f.date,1);await put('revision',it)}A.close();toast('Saved');go(S.view);return false};
@@ -247,10 +248,10 @@ const CONF=['Forgot completely','Struggled','Remembered with effort','Remembered
 A.startRev=async ids=>{let q=ids;if(!Array.isArray(q))q=(await dueData()).queue.map(i=>i.sid);if(!q.length)return toast('Nothing due');S.rev={ids:q,i:0,stage:0,done:[],t0:Date.now()};go('revision')};
 A.rs=(k,v)=>{if(k=='stage'&&v==1)S.rev.el=Date.now()-S.rev.t0;S.rev[k]=v;go('revision')};
 A.rate=async conf=>{const R=S.rev,sid=R.ids[R.i],it=await get('revision',sid),m=Math.max(0,+$('#rm').value||0),prev=it.due,sb=it.step;applyResult(it,conf);await put('revision',it);
-await put('revhist',{id:uid('rh'),sid,date:day(),ok:conf>0,conf,minutes:m,prevDue:prev,nextDue:it.due,interval:it.interval,sb,sa:it.step});R.done.push(conf>0);R.stage=2;go('revision')};
+await put('revhist',{id:uid('rh'),sid,date:studyDay(),ok:conf>0,conf,minutes:m,prevDue:prev,nextDue:it.due,interval:it.interval,sb,sa:it.step});R.done.push(conf>0);R.stage=2;go('revision')};
 A.next=()=>{S.rev.i++;S.rev.stage=0;S.rev.t0=Date.now();S.rev.el=0;if(S.rev.i>=S.rev.ids.length){const d=S.rev.done;S.rev=null;toast('Done: '+d.filter(x=>x).length+'/'+d.length+' recalled')}go('revision')};
-A.skip=async()=>{const it=await get('revision',S.rev.ids[S.rev.i]);it.due=addDays(day(),1);await put('revision',it);A.next()};
-A.resched=async()=>{const n=+prompt('Reschedule by how many days?','3');if(!n)return;const it=await get('revision',S.rev.ids[S.rev.i]);it.due=addDays(day(),n);await put('revision',it);A.next()};
+A.skip=async()=>{const it=await get('revision',S.rev.ids[S.rev.i]);it.due=addDays(studyDay(),1);await put('revision',it);A.next()};
+A.resched=async()=>{const n=+prompt('Reschedule by how many days?','3');if(!n)return;const it=await get('revision',S.rev.ids[S.rev.i]);it.due=addDays(studyDay(),n);await put('revision',it);A.next()};
 A.stop=()=>{S.rev=null;go('revision')};
 V.revision=async()=>{const R=S.rev;
 if(R){const s=await get('sessions',R.ids[R.i]),it=await get('revision',s.id),hist=(await all('revhist')).filter(h=>h.sid===s.id).sort((a,b)=>b.date.localeCompare(a.date));
@@ -265,7 +266,7 @@ return`<h1>Revision</h1><p class="sub">${d.due.length} due · limit ${d.lim}/day
 ${d.due.length>d.lim?` <button onclick="A.spread()">Spread backlog over next days</button>`:''}<h2>Queue by priority</h2><table>${d.queue.map(i=>`<tr><td><span class="lk" onclick="A.road('${i.sid}')">${label(i.s)}</span></td><td>${i.od>0?`<span class="bad">overdue ${i.od}d</span>`:'due today'}</td><td><span class="chip">${stOf(i)}</span></td><td>${i.fails?'failed '+i.fails+'×':''}</td></tr>`).join('')}</table>${d.due.length>d.queue.length?`<p class="sub">+ ${d.due.length-d.queue.length} lower-priority sessions deferred; they stay due.</p>`:''}
 <h2>Next 14 days</h2><div class="cols">${days.map(x=>`<div title="${x}: ${up[x]||0}" style="height:${Math.min(100,(up[x]||0)*12)}%"></div>`).join('')}</div>`};
 /* Roadmap */
-V.roadmap=async()=>{const t=day(),R=S.rm=Object.assign({sub:'',sort:'due',sel:t,stage:-1},S.rm||{}),{rows}=await roadData(),lim=await setting('dailyLimit',20),H=28,end=addDays(t,H-1);
+V.roadmap=async()=>{const t=studyDay(),R=S.rm=Object.assign({sub:'',sort:'due',sel:t,stage:-1},S.rm||{}),{rows}=await roadData(),lim=await setting('dailyLimit',20),H=28,end=addDays(t,H-1);
 if(!rows.length)return`<h1>Roadmap</h1><p class="sub">Each study session follows a fixed path of checks: 1 → 3 → 7 → 14 → 30 days, then it is mastered and comes back every 30 days.</p><div class="box">No sessions yet. Log one with the study timer and its roadmap appears here.<p><button class="p" onclick="A.newSession()">▶ Start study timer</button></p></div>`;
 const fun=[0,0,0,0,0,0];rows.forEach(x=>fun[x.r.m?5:x.i.step]++);
 const load={},who={};rows.forEach(x=>chain(x.i,99,end).forEach(c=>{if(c.date>end)return;load[c.date]=(load[c.date]||0)+1;(who[c.date]=who[c.date]||[]).push({...x,c})}));
@@ -286,7 +287,7 @@ ${backlog>0?`<div class="box" style="margin-top:12px"><b class="bad">${backlog} 
 <div class="leg"><span class="l1">done</span><span class="l2">next check</span><span class="l3">overdue</span><span>projected (italic date)</span></div>
 <div class="tw"><table><tr><th>Session</th><th style="min-width:300px">Path</th><th>Status</th></tr>${L.map(x=>`<tr><td><span class="lk" onclick="A.road('${x.s.id}')">${label(x.s)}</span><div class="sub" style="margin:0;font-size:12px">learned ${fmt(x.s.date)}</div></td><td>${trackHTML(x.r)}</td><td style="white-space:nowrap">${planTag(x.r)}<div class="sub" style="margin:0;font-size:12px">next ${fmt(x.i.due)}</div></td></tr>`).join('')||'<tr><td class="sub">No sessions match these filters.</td></tr>'}</table></div>`};
 A.road=async sid=>{const[s,it,rh]=await Promise.all([get('sessions',sid),get('revision',sid),all('revhist')]);if(!s||!it)return toast('No roadmap for this session');
-const hist=rh.filter(h=>h.sid==sid).sort((a,b)=>a.date.localeCompare(b.date)),r=track(it,s,hist),t=day(),later=r.m?chain(it,4):[];
+const hist=rh.filter(h=>h.sid==sid).sort((a,b)=>a.date.localeCompare(b.date)),r=track(it,s,hist),t=studyDay(),later=r.m?chain(it,4):[];
 $('#mb').innerHTML=`<h3>${label(s)}</h3><p class="sub">Learned ${fmt(s.date)} · ${hm(s.duration)} · ${stOf(it)} · ${planTag(r)}</p>${trackHTML(r)}
 <div class="tw"><table style="margin-top:14px"><tr><th>Check</th><th>Planned</th><th>Actual / expected</th><th></th></tr>${r.nodes.map(n=>`<tr><td>${MS[n.k]}</td><td>${fmt(n.plan)}</td><td>${n.date?fmt(n.date):n.st=='done'?'done':'—'}</td><td>${n.st=='done'?'<span class="ok">done</span>':n.st=='late'?'<span class="bad">overdue</span>':n.st=='now'?'<span class="chip">due today</span>':n.st=='next'?'<span class="chip">scheduled</span>':'<span class="sub">projected</span>'}${(g=>n.date&&g>0?` <span class="sub">+${g}d vs plan</span>`:'')(n.date?diff(n.st!='done'&&n.date<t?t:n.date,n.plan):0)}</td></tr>`).join('')}
 ${r.m?later.map(c=>`<tr><td>Maintenance</td><td>—</td><td>${fmt(c.date)}</td><td><span class="sub">${c.sched?'scheduled':'projected'}</span></td></tr>`).join(''):''}</table></div>
@@ -302,7 +303,7 @@ toast(`Backlog spread until ${fmt(last)}`);go(S.view)};
 async function dayMap(){const[ss,rh,items]=await Promise.all([all('sessions'),all('revhist'),all('revision')]),m={},g=k=>m[k]=m[k]||{l:0,r:0,ls:[],rs:[],due:[]};
 ss.forEach(s=>{const x=g(s.date);x.l+=s.duration;x.ls.push(s)});const sm=new Map(ss.map(s=>[s.id,s]));
 rh.forEach(h=>{const x=g(h.date);x.r+=h.minutes;x.rs.push({...h,s:sm.get(h.sid)})});items.forEach(i=>{if(sm.has(i.sid))g(i.due).due.push({...i,s:sm.get(i.sid)})});return m}
-V.calendar=async()=>{const t=day();if(!S.cal)S.cal={y:+t.slice(0,4),m:+t.slice(5,7)-1,sel:t};const{y,m}=S.cal,dm=await dayMap(),first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate();
+V.calendar=async()=>{const t=studyDay();if(!S.cal)S.cal={y:+t.slice(0,4),m:+t.slice(5,7)-1,sel:t};const{y,m}=S.cal,dm=await dayMap(),first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate();
 let tot=0,ds=0,mx=60;for(let d=1;d<=n;d++){const k=day(new Date(y,m,d)),x=dm[k];if(x){const v=x.l+x.r;tot+=v;if(v)ds++;mx=Math.max(mx,v)}}
 let cells='';for(let i=0;i<first;i++)cells+='<div class="cell e"></div>';
 for(let d=1;d<=n;d++){const k=day(new Date(y,m,d)),x=dm[k]||{l:0,r:0,due:[]},v=x.l+x.r,od=k<t?x.due.filter(i=>i.due<t&&i.attempts==0||false).length:0,pend=x.due.length;
@@ -311,10 +312,10 @@ const sel=dm[S.cal.sel]||{l:0,r:0,ls:[],rs:[],due:[]},td=sel.rs.length,pend=sel.
 return`<h1>Calendar</h1><div class="row" style="margin:6px 0 14px"><button onclick="A.mo(-1)">‹</button><b style="min-width:140px;text-align:center">${new Date(y,m,1).toLocaleDateString(undefined,{month:'long',year:'numeric'})}</b><button onclick="A.mo(1)">›</button><button onclick="S.cal=null;go('calendar')">Today</button><span class="sub" style="margin:0">${hm(tot)} studied · ${ds} active days</span></div>
 <div class="cal">${'SMTWTFS'.split('').map(c=>`<div class="h">${c}</div>`).join('')}${cells}</div>
 <h2>${fmt(S.cal.sel)}</h2><div class="g" style="margin-bottom:12px"><div class="box"><div class="lbl">Learning</div><div class="big">${hm(sel.l)}</div></div><div class="box"><div class="lbl">Revision</div><div class="big">${hm(sel.r)}</div></div><div class="box"><div class="lbl">Total</div><div class="big">${hm(sel.l+sel.r)}</div></div></div>
-<table>${sel.ls.map(s=>`<tr><td><span class="chip">learned</span></td><td>${label(s)}</td><td>${hm(s.duration)}</td></tr>`).join('')}${sel.rs.map(h=>`<tr><td><span class="chip">revised</span></td><td>${h.s?label(h.s):''}</td><td class="${h.ok?'ok':'bad'}">${CONF[h.conf]} · ${hm(h.minutes)}</td></tr>`).join('')}${pend.map(i=>`<tr><td><span class="chip ${S.cal.sel<day()?'bad':'wn'}">${S.cal.sel<day()?'missed':'scheduled'}</span></td><td>${label(i.s)}</td><td>revision due</td></tr>`).join('')}</table>${!sel.ls.length&&!sel.rs.length&&!pend.length?'<p class="sub">Nothing on this day.</p>':''}`};
+<table>${sel.ls.map(s=>`<tr><td><span class="chip">learned</span></td><td>${label(s)}</td><td>${hm(s.duration)}</td></tr>`).join('')}${sel.rs.map(h=>`<tr><td><span class="chip">revised</span></td><td>${h.s?label(h.s):''}</td><td class="${h.ok?'ok':'bad'}">${CONF[h.conf]} · ${hm(h.minutes)}</td></tr>`).join('')}${pend.map(i=>`<tr><td><span class="chip ${S.cal.sel<studyDay()?'bad':'wn'}">${S.cal.sel<studyDay()?'missed':'scheduled'}</span></td><td>${label(i.s)}</td><td>revision due</td></tr>`).join('')}</table>${!sel.ls.length&&!sel.rs.length&&!pend.length?'<p class="sub">Nothing on this day.</p>':''}`};
 A.mo=d=>{S.cal.m+=d;if(S.cal.m<0){S.cal.m=11;S.cal.y--}if(S.cal.m>11){S.cal.m=0;S.cal.y++}go('calendar')};
 /* Analytics */
-V.analytics=async()=>{const[ss,rh,d]=await Promise.all([all('sessions'),all('revhist'),dueData()]),t=day(),cnt={};
+V.analytics=async()=>{const[ss,rh,d]=await Promise.all([all('sessions'),all('revhist'),dueData()]),t=studyDay(),cnt={};
 ss.forEach(s=>cnt[s.date]=(cnt[s.date]||0)+s.duration);rh.forEach(h=>cnt[h.date]=(cnt[h.date]||0)+h.minutes);const days=[...Array(14)].map((_,k)=>addDays(t,k-13)),mx=Math.max(1,...days.map(x=>cnt[x]||0));
 const lm=ss.reduce((a,s)=>a+s.duration,0),rm=rh.reduce((a,h)=>a+h.minutes,0),ok=rh.filter(h=>h.ok).length,wk={},tp={};
 rh.forEach(h=>{const k=addDays(h.date,-new Date(h.date+'T00:00:00').getDay());(wk[k]=wk[k]||[0,0])[1]++;if(h.ok)wk[k][0]++});
